@@ -74,14 +74,14 @@ class Worker_T5:
 			features.input_ids,
 			attention_mask=features.attention_mask,
 			#max_new_tokens=100000,
-			num_beams=16,
-			min_length=80,
-			max_length=1000,
+			num_beams=32,
+			min_length=20,
+			max_length=2000,
 			temperature=0.76,
 			do_sample=True,
-			early_stopping= True,
+			early_stopping=True,
 			no_repeat_ngram_size=2,
-			length_penalty=2
+			length_penalty=1
 			)
 		return self._t5_tokenizer.decode(gen_outputs[0], skip_special_tokens=True)
 
