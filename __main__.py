@@ -1,89 +1,59 @@
-from sicken import constants
-from adisconfig import adisconfig
-from log import Log
+from adistools.adisconfig import adisconfig 
+from adistools.log import Log
+from sicken.sicken.t5.conditional_generation import Sicken
+
 from pymongo import MongoClient
 from pika import BlockingConnection, ConnectionParameters, PlainCredentials
 from json import loads, dumps
 from uuid import uuid4
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
-class Worker_T5:
-	project_name='sicken-worker_t5_chat'
+class Worker_T5_Conditional_Generation:
+	project_name='sicken-worker_t5_conditional_generation'
 
 	def __init__(self):
-		self.config=adisconfig('/opt/adistools/configs/sicken-worker_t5_chat.yaml')
-		self.log=Log(
+		self._config=adisconfig('/opt/adistools/configs/sicken-worker_t5_conditional_generation.yaml')
+		self._log=Log(
             parent=self,
-            rabbitmq_host=self.config.rabbitmq.host,
-            rabbitmq_port=self.config.rabbitmq.port,
-            rabbitmq_user=self.config.rabbitmq.user,
-            rabbitmq_passwd=self.config.rabbitmq.password,
-            debug=self.config.log.debug,
+            rabbitmq_host=self._config.rabbitmq.host,
+            rabbitmq_port=self._config.rabbitmq.port,
+            rabbitmq_user=self._config.rabbitmq.user,
+            rabbitmq_passwd=self._config.rabbitmq.password,
+            debug=self._config.log.debug,
             )
 
-		self.log.info('Initialisation of sicken-worker_t5_chat started')
-		self._init_mongo()
-		self._init_rabbitmq()
-		self._init_model()
-		self._init_tokenizer()
-		self.log.success('Initialisation of sicken-worker_t5_chat succeed')
+		self._log.info('Initialisation of sicken-worker_t5_conditional_generation started')
 
-	def _init_model(self):
-		self._t5_model=AutoModelForSeq2SeqLM.from_pretrained(self._get_t5_model(), local_files_only=True)
-
-	def _init_tokenizer(self):
-		self._t5_tokenizer=AutoTokenizer.from_pretrained(self._get_t5_tokenizer(), local_files_only=True)
-
-	def _init_mongo(self):
-		self._mongo_cli=MongoClient(
-			self.config.mongo.host,
-			self.config.mongo.port
+		self._sicken=Sicken(
+			root=self,
+			model=self._config.worker_t5_conditional_generation.model,
+			tokenizer=self._config.worker_t5_conditional_generation.tokenizer
 			)
-		self._mongo_db=self._mongo_cli[self.config.mongo.db]
+		
+		self._mongo_cli=MongoClient(
+			self._config.mongo.host,
+			self._config.mongo.port
+			)
+		self._mongo_db=self._mongo_cli[self._config.mongo.db]
 
-
-	def _init_rabbitmq(self):
 		self._rabbitmq_conn=BlockingConnection(
 	        ConnectionParameters(
-	            host=self.config.rabbitmq.host,
-	            port=self.config.rabbitmq.port,
+	            host=self._config.rabbitmq.host,
+	            port=self._config.rabbitmq.port,
 	            credentials=PlainCredentials(
-	                self.config.rabbitmq.user,
-	                self.config.rabbitmq.password
+	                self._config.rabbitmq.user,
+	                self._config.rabbitmq.password
 	                )
 	            )
 	        )
 		self._rabbitmq_channel=self._rabbitmq_conn.channel()
 		self._rabbitmq_channel.basic_consume(
-			queue="sicken-requests_t5_chat",
+			queue="sicken-requests_t5_conditional_generation",
 			auto_ack=True,
 			on_message_callback=self._callback
 			)
 
-	def _get_t5_model(self):
-		model=self.config.worker_t5.model
-		return constants.Sicken.models_path / "t5" /  model
 
-	def _get_t5_tokenizer(self):
-		tokenizer=self.config.worker_t5.tokenizer
-		return constants.Sicken.tokenizers_path / "t5" /  tokenizer
-
-	def _get_answer(self, question):
-		features=self._t5_tokenizer(question, return_tensors="pt")
-		gen_outputs=self._t5_model.generate(
-			features.input_ids,
-			attention_mask=features.attention_mask,
-			#max_new_tokens=100000,
-			num_beams=32,
-			min_length=20,
-			max_length=2000,
-			temperature=0.76,
-			do_sample=True,
-			early_stopping=True,
-			no_repeat_ngram_size=2,
-			length_penalty=1
-			)
-		return self._t5_tokenizer.decode(gen_outputs[0], skip_special_tokens=True)
+		self._log.success('Initialisation of sicken-worker_t5_conditional_generation succeed')
 
 	def _build_response_message(self, user_uuid, chat_uuid, socketio_session_id, message):
 		return dumps({
@@ -97,7 +67,7 @@ class Worker_T5:
 	def _callback(self, channel, method, properties, body):
 		msg=body.decode('utf-8')
 		msg=loads(msg)
-		response=self._get_answer(msg['message'])
+		response=self._sicken.get_answer(msg)
 
 		msg=self._build_response_message(
 			user_uuid="95a952c4-0deb-4382-9a51-1932c31c9bc0",
@@ -107,7 +77,7 @@ class Worker_T5:
 
 		self._rabbitmq_channel.basic_publish(
 			exchange="",
-			routing_key="sicken-responses_chat",
+			routing_key="sicken-responses",
 			body=msg)
 
 
@@ -116,5 +86,5 @@ class Worker_T5:
 
 
 if __name__=="__main__":
-	worker_t5=Worker_T5()
+	worker_t5=Worker_T5_Conditional_Generation()
 	worker_t5.start()
