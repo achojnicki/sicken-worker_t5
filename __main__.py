@@ -7,6 +7,7 @@ from pika import BlockingConnection, ConnectionParameters, PlainCredentials
 from json import loads, dumps
 from uuid import uuid4
 
+#worker t5
 class Worker_T5_Conditional_Generation:
 	project_name='sicken-worker_t5_conditional_generation'
 
